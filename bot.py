@@ -1,82 +1,53 @@
-import ccxt.async_support as ccxt
-import asyncio
-import urllib.parse
-import aiohttp
+import telebot
+import ccxt
 import time
 
-# --- सेटिंग्स ---
-TOKEN = "8621795447:AAFwfiwvrMM3cUFCGoEMgGWGZflbifS141s"
-CHAT_ID = "8722887885"
+# --- आपकी भरी हुई डिटेल्स ---
+BINANCE_API = "aY6tvWpG08tHo3nT2C0LK65c9SuEuc0ZZIngKFztyP4u36lcbMuMmr8pTmRtXIt6"
+BINANCE_SECRET = "xfRNDbN0LmwukA6NLMxrqENbQRJ9bk93wm7Y8yX5L7VIuf0tesn7KWNkNdtug5lk"
 
-async def send_telegram_msg(text):
-    try:
-        msg = urllib.parse.quote(text)
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={msg}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=15) as response:
-                status = response.status
-                if status == 200:
-                    return True
-                else:
-                    print(f"!!! Telegram Error: Status {status}")
-                    return False
-    except Exception as e:
-        print(f"!!! Network Error: {e}")
-        return False
+WAZIRX_API = "0FYVRs5SIxDXHpiJ2rIvO2DRFmmbRsTnDE70UcEcwcjuzkAq7hnZEBatK9lh073K"
+WAZIRX_SECRET = "xATonbAaHdDw3AAIM07JCf7NNPnQlRLdAOWUAnzY"
 
-async def check_coin(symbol, bn, wz, investment, fee_percent):
-    try:
-        ticker_bn, ticker_wz = await asyncio.gather(
-            bn.fetch_ticker(symbol),
-            wz.fetch_ticker(symbol)
-        )
-        b_p = ticker_bn['last']
-        w_p = ticker_wz['last']
-        gap = ((w_p - b_p) / b_p) * 100
-        net_profit = (investment * (gap/100)) - (investment * fee_percent)
+TOKEN = "8621795447:AAFwfiwvrMM3cUCGoEMgGWGZflbifS141s" # फोटो से नया टोकन
+MY_CHAT_ID = "8722887885" # आपकी फोटो से ID
 
-        # टेस्टिंग के लिए: अगर प्रॉफिट ₹0.10 से ऊपर है तो मैसेज भेजें
-        if net_profit >= 0.10: 
-            alert = f"DEBUG ALERT: {symbol} | Profit: {net_profit:.2f}"
-            await send_telegram_msg(alert)
-            return f"Found: {symbol}(INR {net_profit:.2f})"
-        return None
-    except:
-        return None
+bot = telebot.TeleBot(TOKEN)
 
-async def main():
-    print("--- SCANNER STARTING: PIYUSH PRO ---")
+# एक्सचेंज सेटअप
+binance = ccxt.binance({'apiKey': BINANCE_API, 'secret': BINANCE_SECRET, 'enableRateLimit': True})
+wazirx = ccxt.wazirx({'apiKey': WAZIRX_API, 'secret': WAZIRX_SECRET, 'enableRateLimit': True})
+
+def piyush_scanner():
+    # इन कॉइन्स पर नज़र रखेंगे
+    coins = ['SOL/USDT', 'BTC/USDT', 'ETH/USDT', 'DOGE/USDT', 'XRP/USDT']
     
-    # चेक करने के लिए पहला मैसेज
-    print("Sending test message to Telegram...")
-    success = await send_telegram_msg("🚀 Piyush Bhai, Bot is starting NOW!")
-    if success:
-        print("Test Message Sent Successfully!")
-    else:
-        print("FAILED to send message. Please check your Internet/Token.")
-
-    bn = ccxt.binance()
-    wz = ccxt.wazirx()
-    
-    symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'DOGE/USDT', 'XRP/USDT', 'LTC/USDT', 'MATIC/USDT', 'TRX/USDT']
-    investment = 1000
-    fee_percent = 0.003
-
-    try:
-        while True:
-            start_time = time.time()
-            tasks = [check_coin(s, bn, wz, investment, fee_percent) for s in symbols]
-            results = await asyncio.gather(*tasks)
+    for symbol in coins:
+        try:
+            # भाव मंगाना
+            b_price = binance.fetch_ticker(symbol)['last']
+            w_price = wazirx.fetch_ticker(symbol)['last']
             
-            # जो कॉइन्स चेक हुए उनकी लिस्ट दिखाएगा
-            found = [r for r in results if r is not None]
-            print(f"Done in {time.time() - start_time:.2f}s | Opportunities: {len(found)}")
+            # मुनाफ़ा निकालना
+            diff = w_price - b_price
+            profit_pct = (diff / b_price) * 100
             
-            # थोड़ा रुकिए ताकि सिस्टम को सांस लेने का मौका मिले
-            await asyncio.sleep(5) 
-    finally:
-        await bn.close()
-        await wz.close()
+            # अगर मुनाफ़ा 0.5% से ज़्यादा है (फीस काटकर मुनाफ़े के लिए)
+            if profit_pct > 0.5:
+                msg = (f"🚀 **Piyush Bhai, Profit Opportunity!**\n\n"
+                       f"Coin: {symbol}\n"
+                       f"Binance Price: ${b_price}\n"
+                       f"WazirX Price: ${w_price}\n"
+                       f"Profit: {profit_pct:.2f}%")
+                bot.send_message(MY_CHAT_ID, msg)
+                print(f"Alert Sent for {symbol}")
+                
+        except Exception as e:
+            print(f"Error checking {symbol}: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    bot.send_message(MY_CHAT_ID, "✅ पीयूष भाई, जासूस अब लाइव मार्केट स्कैन कर रहा है!")
+    print("Scanner Started...")
+    while True:
+        piyush_scanner()
+        time.sleep(30) # हर 30 सेकंड में बाज़ार चेक करेगा
